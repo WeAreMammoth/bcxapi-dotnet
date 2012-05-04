@@ -19,9 +19,21 @@ namespace BCXAPI
         private readonly string _redirectURI; //this must match what you've set up in your basecamp integration page
         private readonly string _appNameAndContact; //this will go in your User-Agent header when making requests. 37s recommends you add your app name and a contact URL or email.
 
+        
         private static BCXAPI.Providers.IResponseCache _cache;
         private dynamic _accessToken;
-
+        //get or set the access token here - this way if you just got it back from basecamp you dont need to reconstruct to entire object
+        public dynamic AccessToken
+        {
+            get
+            {
+                return _accessToken;
+            }
+            set
+            {
+                _accessToken = value;
+            }
+        }
 
         /// <summary>
         /// create a service class with an authorization token retrieved from GetAuthToken (if you have it). 
@@ -201,9 +213,18 @@ namespace BCXAPI
                         if (resp_etag != null || resp_last_modified != null)
                         {
                             //cache it
-                            _cache.Set(cacheKey + "etag", resp_etag);
-                            _cache.Set(cacheKey + "lastModified", resp_last_modified);
-                            _cache.Set(cacheKey, strResp);
+                            if (!string.IsNullOrWhiteSpace(resp_etag))
+                            {
+                                _cache.Set(cacheKey + "etag", resp_etag);
+                            }
+                            if (!string.IsNullOrWhiteSpace(resp_last_modified))
+                            {
+                                _cache.Set(cacheKey + "lastModified", resp_last_modified);
+                            }
+                            if (!string.IsNullOrWhiteSpace(strResp))
+                            {
+                                _cache.Set(cacheKey, strResp);
+                            }
                         }
                         return json_results;
                     }
