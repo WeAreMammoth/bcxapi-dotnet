@@ -29,7 +29,8 @@ Store this entire access token somewhere (database, cache, memory, etc) - you wi
             BCXAPI.Service s = new BCXAPI.Service    (DoneDone.Utilities.Config.BCXAPI_ClientID,                DoneDone.Utilities.Config.BCXAPI_ClientSecret,                DoneDone.Utilities.Config.BCXAPI_RedirectURI,                DoneDone.Utilities.Config.BCXAPI_ApplicationNameAndContact,                new DoneDone.Utilities.CacheForBCXAPI(),                access_token /*access token from above*/);
 
 6. Make calls to the api -
-             //returns ALL 37s accounts for this user this API only works with the new Basecamp for now as far as we can tell.
+             //returns ALL 37s accounts for this user this API only works 
+             //with the new Basecamp for now as far as we can tell.
              dynamic accounts = s.GetAccounts(); 
 
 That's all for now - this wrapper only implements the GET methods for the API. PUT/POST coming soon. Feel free to submit pull requests and I'll merge and repackage our NUGET package (http://nuget.org/packages/BCXAPI)
