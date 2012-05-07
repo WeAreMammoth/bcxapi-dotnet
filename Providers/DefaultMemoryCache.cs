@@ -2,6 +2,11 @@
 
 namespace BCXAPI.Providers
 {
+    /// <summary>
+    /// if you do not provide your own implmentation of the IResponseCache interface,
+    /// this is used to cache responses from Basecamp via the  System.Runtime.Caching.MemoryCache.Default cache.
+    /// </summary>
+    /// <seealso cref="BCXAPI.Providers.IResponseCache"/>
     public class DefaultMemoryCache : BCXAPI.Providers.IResponseCache
     {
         public object Get(string key)

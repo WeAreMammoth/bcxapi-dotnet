@@ -5,6 +5,10 @@ using System.Text;
 
 namespace BCXAPI.Providers
 {
+    /// <summary>
+    /// implement this interface and provide your implementation to the BCXAPI.Service constructor to use it as 
+    /// to cache responses from Basecamp.
+    /// </summary>
     public interface IResponseCache
     {
         /// <summary>
