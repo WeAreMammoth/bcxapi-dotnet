@@ -7,8 +7,6 @@ namespace BCXAPI.Exceptions
 {
     public class BaseException : System.Exception
     {
-       
-        
         public BaseException(string message) : base(message) {
         }
     }

@@ -13,13 +13,15 @@ namespace BCXAPI
         private const string _AccountsURL = "https://launchpad.37signals.com/authorization.json";
         private const string _AuthorizationURL = "https://launchpad.37signals.com/authorization/new?type=web_server&client_id={0}&redirect_uri={1}{2}";
         private const string _AccessTokenURL = "https://launchpad.37signals.com/authorization/token?type=web_server&client_id={0}&redirect_uri={1}&client_secret={2}&code={3}";
+        private const string _RefreshTokenURL = "https://launchpad.37signals.com/authorization/token";
+        private const string _RefreshTokenPostBody = "type=refresh&client_id={0}&redirect_uri={1}&client_secret={2}&refresh_token={3}";
 
         private readonly string _clientID;//the client id given to you by basecamp
         private readonly string _clientSecret;//the client secret given to you by basecamp
         private readonly string _redirectURI; //this must match what you've set up in your basecamp integration page
         private readonly string _appNameAndContact; //this will go in your User-Agent header when making requests. 37s recommends you add your app name and a contact URL or email.
 
-        
+
         private static BCXAPI.Providers.IResponseCache _cache;
         private dynamic _accessToken;
         //get or set the access token here - this way if you just got it back from basecamp you dont need to reconstruct to entire object
@@ -47,11 +49,11 @@ namespace BCXAPI
         /// <param name="appNameAndContact">your application name and contact info - added to your request header</param>
         /// <param name="cache">an optional cache to use for caching responses from 37s. if you don't provide one, it'll use the System.Runtime.Caching.MemoryCache.Default cache</param>
         /// <param name="accessToken">if you have an access token, provide it here. this is the entire json object returned from the call to GetAccessToken</param>
-        public Service(string clientID, 
-            string clientSecret, 
-            string redirectURI, 
-            string appNameAndContact, 
-            BCXAPI.Providers.IResponseCache cache = null, 
+        public Service(string clientID,
+            string clientSecret,
+            string redirectURI,
+            string appNameAndContact,
+            BCXAPI.Providers.IResponseCache cache = null,
             dynamic accessToken = null)
         {
             if (cache == null)
@@ -62,7 +64,7 @@ namespace BCXAPI
             {
                 _cache = cache;
             }
-            
+
             _clientID = clientID;
             _clientSecret = clientSecret;
             _redirectURI = redirectURI;
@@ -93,7 +95,7 @@ namespace BCXAPI
                 }
             }
         }
-        
+
 
         /// <summary>
         /// step 1: get the URL to redirect your users to
@@ -116,7 +118,7 @@ namespace BCXAPI
 
             return string.Format(_AuthorizationURL, _clientID, _redirectURI, additionalParams);
         }
-        
+
         /// <summary>
         ///step 2: Given a code that the url from GetRequestAuthorizationURL eventually redirects back to and the clientsecret you can get an access token. store this token somewhere 
         /// as you need to provide it to this wrapper to make calls.
@@ -148,11 +150,13 @@ namespace BCXAPI
         /// need to update your cache.
         /// </summary>
         /// <param name="url">the api method endpoint being called</param>
-        /// <returns>a dynamic object - matches the json from basecamp exactly</returns>
+        /// <exception cref="Exceptions.UnauthorizedException">Will be thrown if you cannot refresh the basecamp token when it has expired</exception>
+        /// <exception cref="ArgumentException">URLs must end in .json</exception>
+        /// <exception cref="Exceptions.RateLimitExceeded">Thrown when you exceed the ratelimit - will contain information on when you can retry</exception>
         private dynamic _getJSONFromURL(string url)
         {
             // ensure url ends with .json or .json?xxx
-            if (!url.ToLower().EndsWith(".json") && 
+            if (!url.ToLower().EndsWith(".json") &&
                 !(url.Contains("?") && url.ToLower().Substring(0, url.IndexOf("?")).EndsWith(".json")))
             {
                 throw new ArgumentException("Invalid URL. URLs must end in .json", url);
@@ -233,14 +237,69 @@ namespace BCXAPI
                 {
                     throw new Exceptions.RateLimitExceededException(int.Parse(resp.Headers["Retry-After"]));
                 }
+                else if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    if (resp.Headers[System.Net.HttpResponseHeader.WwwAuthenticate] != null)
+                    {
+                        string www_auth = resp.Headers[System.Net.HttpResponseHeader.WwwAuthenticate];
+                        int error_start = www_auth.LastIndexOf("error=\"token_expired\"");
+                        if (error_start > -1)
+                        {       //need to refresh token
+                            throw new Exceptions.TokenExpired();
+                        }
+                    }
+
+                    //throw an unauthorized exception if you get here
+                    throw new Exceptions.UnauthorizedException();
+
+                }
                 else
                 {
                     throw new Exceptions.GeneralAPIException("Try again later. Status code returned was " + (int)resp.StatusCode, (int)resp.StatusCode);
                 }
             }
+            catch (Exceptions.BaseException)
+            {
+                throw;
+            }
             catch
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// call this when you get a TokenExpired exception and store the new access token for future requests
+        /// </summary>
+        /// <returns>the new access token, which you should store for future calls</returns>
+        public dynamic RefreshAccessToken()
+        {
+            try
+            {
+                string url = string.Format(_RefreshTokenURL);
+                string post_body = string.Format(_RefreshTokenPostBody, System.Web.HttpUtility.UrlEncode(_clientID),
+                    System.Web.HttpUtility.UrlEncode(_redirectURI),
+                    System.Web.HttpUtility.UrlEncode(_clientSecret), System.Web.HttpUtility.UrlEncode(_accessToken.refresh_token));
+                var wr = System.Net.HttpWebRequest.Create(url);
+                wr.Method = "POST";
+                byte[] byteArray = Encoding.UTF8.GetBytes(post_body);
+                wr.ContentType = "application/x-www-form-urlencoded";
+                wr.ContentLength = byteArray.Length;
+                using (System.IO.Stream dataStream = wr.GetRequestStream())
+                {
+                    dataStream.Write(byteArray, 0, byteArray.Length);
+                }
+                
+                var resp = (System.Net.HttpWebResponse)wr.GetResponse();
+                using (var sw = new System.IO.StreamReader(resp.GetResponseStream()))
+                {
+                    _accessToken = Json.Decode(sw.ReadToEnd());
+                }
+                return _accessToken;
+            }
+            catch
+            {
+                throw new Exceptions.UnauthorizedException();
             }
         }
 
@@ -249,7 +308,7 @@ namespace BCXAPI
             if (IsAuthenticated)
             {
                 return _getJSONFromURL(_AccountsURL);
-                
+
             }
             else
             {
@@ -292,7 +351,7 @@ namespace BCXAPI
         {
             if (IsAuthenticated)
             {
-                return _getJSONFromURL(string.Format(_BaseCampAPIURL, accountID, string.Format("projects/{0}/accesses",projectID)));
+                return _getJSONFromURL(string.Format(_BaseCampAPIURL, accountID, string.Format("projects/{0}/accesses", projectID)));
             }
             else
             {
@@ -431,8 +490,8 @@ namespace BCXAPI
                 throw new Exceptions.UnauthorizedException();
             }
         }
-        
-        public dynamic GetTodoLists(int accountID, int projectID, bool completed=false)
+
+        public dynamic GetTodoLists(int accountID, int projectID, bool completed = false)
         {
             if (IsAuthenticated)
             {
@@ -500,7 +559,7 @@ namespace BCXAPI
                 {
                     url = string.Format("&page={1}", url, page);
                 }
-                
+
                 return _getJSONFromURL(url);
             }
             else
@@ -516,7 +575,7 @@ namespace BCXAPI
                 since = since ?? DateTime.MinValue;
                 string string_since = since.Value.ToString("yyyy-MM-ddTHH:mmzzz");
                 string url = string.Format("{0}?since={1}",
-                    string.Format(_BaseCampAPIURL, accountID, string.Format( "projects/{0}/events", projectID)),
+                    string.Format(_BaseCampAPIURL, accountID, string.Format("projects/{0}/events", projectID)),
                    string_since);
                 if (page != 1)
                 {
@@ -596,7 +655,7 @@ namespace BCXAPI
         {
             if (IsAuthenticated)
             {
-                  return _getJSONFromURL(string.Format(_BaseCampAPIURL, accountID, string.Format("projects/{0}/calendar_events/{1}", projectID, calendarEventID)));
+                return _getJSONFromURL(string.Format(_BaseCampAPIURL, accountID, string.Format("projects/{0}/calendar_events/{1}", projectID, calendarEventID)));
             }
             else
             {

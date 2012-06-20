@@ -5,11 +5,11 @@ using System.Text;
 
 namespace BCXAPI.Exceptions
 {
-    public class UnauthorizedException : System.Exception
+    public class UnauthorizedException : GeneralAPIException
     {
 
         public UnauthorizedException()
-            : base("You cannot be authenticated with Basecamp.")
+            : base("You cannot be authenticated with Basecamp.", 401)
         {
            
         }
